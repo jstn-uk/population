@@ -1,0 +1,788 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mapa de Populacao</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@10.5.0/ol.css" />
+  <style>
+    :root {
+      --ink: #111c18;
+      --muted: #66736d;
+      --line: #d9e3dd;
+      --panel: #ffffff;
+      --soft: #eef4f0;
+      --accent: #087b5b;
+      --accent-dark: #075f48;
+      --danger: #d84c62;
+      --gold: #eca72c;
+      --shadow: 0 18px 50px rgba(18, 35, 27, 0.13);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      color: var(--ink);
+      background: #dfe9e3;
+      overflow: hidden;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: 390px 1fr;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .sidebar {
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      min-height: 0;
+      padding: 26px;
+      overflow-y: auto;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 250, 247, 0.98));
+      border-right: 1px solid var(--line);
+      box-shadow: 10px 0 34px rgba(18, 35, 27, 0.08);
+    }
+
+    .title-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .mark {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      color: white;
+      background: linear-gradient(145deg, var(--accent), #2a8b8f);
+      border-radius: 8px;
+      flex: 0 0 auto;
+      box-shadow: 0 10px 26px rgba(8, 123, 91, 0.25);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.7rem;
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .intro {
+      margin: 8px 0 0 54px;
+      color: var(--muted);
+      font-size: 0.96rem;
+      line-height: 1.42;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 12px 30px rgba(18, 35, 27, 0.07);
+    }
+
+    .tools {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+    }
+
+    .button-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    button {
+      min-height: 43px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--ink);
+      background: #fbfcfb;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+      transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+    }
+
+    button:hover {
+      border-color: #bccdc3;
+      box-shadow: 0 9px 22px rgba(18, 35, 27, 0.08);
+      transform: translateY(-1px);
+    }
+
+    .primary {
+      color: white;
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .primary.active {
+      background: var(--danger);
+      border-color: var(--danger);
+    }
+
+    .secondary {
+      color: var(--accent-dark);
+    }
+
+    .city-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .city-grid button {
+      min-height: 37px;
+      color: var(--muted);
+      font-size: 0.86rem;
+      background: #fff;
+    }
+
+    .results {
+      padding: 18px;
+    }
+
+    .metric {
+      padding: 15px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .metric:first-child {
+      padding-top: 0;
+    }
+
+    .metric:last-child {
+      padding-bottom: 0;
+      border-bottom: 0;
+    }
+
+    .label {
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 900;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .value {
+      margin-top: 5px;
+      font-size: clamp(1.7rem, 4vw, 2.55rem);
+      line-height: 1;
+      font-weight: 900;
+      letter-spacing: 0;
+    }
+
+    .note {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.35;
+    }
+
+    .legend {
+      display: grid;
+      gap: 11px;
+      margin-top: auto;
+      padding: 15px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.36;
+    }
+
+    .legend-line {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .scale {
+      width: 34px;
+      height: 12px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #67b984, var(--gold), var(--danger));
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      flex: 0 0 auto;
+    }
+
+    .map-wrap {
+      position: relative;
+      min-width: 0;
+      height: 100vh;
+      background: #dfe9e3;
+    }
+
+    #map {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .status {
+      position: absolute;
+      top: 18px;
+      left: 18px;
+      right: 18px;
+      z-index: 2;
+      display: flex;
+      pointer-events: none;
+    }
+
+    .status span {
+      max-width: 650px;
+      padding: 11px 14px;
+      color: #1c2a24;
+      background: rgba(255, 255, 255, 0.93);
+      border: 1px solid rgba(217, 227, 221, 0.9);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      font-size: 0.94rem;
+      line-height: 1.35;
+      backdrop-filter: blur(12px);
+    }
+
+    .ol-zoom {
+      top: auto;
+      left: auto;
+      right: 18px;
+      bottom: 18px;
+    }
+
+    .ol-control {
+      background: transparent;
+    }
+
+    .ol-control button {
+      width: 36px;
+      height: 36px;
+      min-height: 0;
+      margin: 4px;
+      color: var(--ink);
+      background: rgba(255, 255, 255, 0.94);
+      border: 1px solid var(--line);
+      box-shadow: 0 10px 26px rgba(18, 35, 27, 0.1);
+    }
+
+    .ol-attribution {
+      right: 14px;
+      bottom: 70px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.88);
+    }
+
+    @media (max-width: 880px) {
+      body {
+        overflow: auto;
+      }
+
+      .app {
+        grid-template-columns: 1fr;
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
+      }
+
+      .sidebar {
+        overflow: visible;
+        padding: 20px;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .intro {
+        margin-left: 0;
+      }
+
+      .map-wrap {
+        height: 68vh;
+        min-height: 500px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <header>
+        <div class="title-row">
+          <div class="mark" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+              <path d="m4 7.5 5.5-2.4 5 2.2L20 5v12l-5.5 2.4-5-2.2L4 19.5v-12Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
+              <path d="M9.5 5.1v12.1M14.5 7.3v12.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            </svg>
+          </div>
+          <h1>Mapa de Populacao</h1>
+        </div>
+        <p class="intro">Desenhe uma area livre no mapa e veja uma estimativa imediata de moradores.</p>
+      </header>
+
+      <section class="panel tools" aria-label="Ferramentas do mapa">
+        <div class="button-row">
+          <button id="drawButton" class="primary" type="button">Desenhar area</button>
+          <button id="clearButton" class="secondary" type="button">Limpar</button>
+        </div>
+        <div class="city-grid">
+          <button type="button" data-city="-46.6333,-23.5505,12">Sao Paulo</button>
+          <button type="button" data-city="-0.1276,51.5072,10">Londres</button>
+          <button type="button" data-city="-74.0060,40.7128,10">Nova York</button>
+          <button type="button" data-city="-79.3832,43.6532,10">Toronto</button>
+          <button type="button" data-city="139.6503,35.6762,10">Tokyo</button>
+          <button type="button" data-city="-58.3816,-34.6037,11">Buenos Aires</button>
+          <button type="button" data-city="2.3522,48.8566,11">Paris</button>
+          <button type="button" data-city="-9.1393,38.7223,12">Lisboa</button>
+        </div>
+      </section>
+
+      <section class="panel results" aria-live="polite">
+        <div class="metric">
+          <div class="label">Populacao estimada</div>
+          <div id="populationValue" class="value">0</div>
+          <div id="statusNote" class="note">Clique em "Desenhar area" e contorne uma regiao no mapa.</div>
+        </div>
+        <div class="metric">
+          <div class="label">Area desenhada</div>
+          <div id="areaValue" class="value">0 km²</div>
+          <div class="note">O desenho fecha automaticamente quando voce solta o mouse.</div>
+        </div>
+        <div class="metric">
+          <div class="label">Densidade media</div>
+          <div id="densityValue" class="value">0 hab/km²</div>
+        </div>
+      </section>
+
+      <section class="panel legend">
+        <div class="legend-line"><span class="scale"></span><span>O calculo tenta usar WorldPop online. Se falhar, usa o banco local expandido.</span></div>
+        <div>WorldPop cobre o mundo com grade populacional. O fallback local cobre Europa/UK, EUA, Canada, Japao, Argentina e algumas cidades do Brasil.</div>
+      </section>
+    </aside>
+
+    <main class="map-wrap">
+      <div id="map"></div>
+      <div class="status"><span id="mapStatus">OpenStreetMap carregado. Arraste para navegar ou clique em Desenhar area.</span></div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/ol@10.5.0/dist/ol.js"></script>
+  <script>
+    const fromLonLat = ol.proj.fromLonLat;
+    const toLonLat = ol.proj.toLonLat;
+
+    const populationValue = document.getElementById("populationValue");
+    const areaValue = document.getElementById("areaValue");
+    const densityValue = document.getElementById("densityValue");
+    const statusNote = document.getElementById("statusNote");
+    const mapStatus = document.getElementById("mapStatus");
+    const drawButton = document.getElementById("drawButton");
+    const clearButton = document.getElementById("clearButton");
+
+    const source = new ol.source.Vector();
+    const sampleSource = new ol.source.Vector();
+
+    const map = new ol.Map({
+      target: "map",
+      layers: [
+        new ol.layer.Tile({
+          source: new ol.source.OSM({
+            crossOrigin: "anonymous"
+          })
+        }),
+        new ol.layer.Vector({
+          source,
+          style: new ol.style.Style({
+            stroke: new ol.style.Stroke({ color: "#d84c62", width: 3 }),
+            fill: new ol.style.Fill({ color: "rgba(216, 76, 98, 0.16)" })
+          })
+        }),
+        new ol.layer.Vector({
+          source: sampleSource,
+          style: (feature) => new ol.style.Style({
+            image: new ol.style.Circle({
+              radius: 3,
+              fill: new ol.style.Fill({ color: feature.get("color") }),
+              stroke: new ol.style.Stroke({ color: "rgba(255,255,255,0.85)", width: 1 })
+            })
+          })
+        })
+      ],
+      view: new ol.View({
+        center: fromLonLat([-46.6333, -23.5505]),
+        zoom: 12,
+        minZoom: 3,
+        maxZoom: 19
+      }),
+      controls: ol.control.defaults.defaults({
+        rotate: false
+      })
+    });
+
+    const densityAnchors = [
+      { name: "Europe background", lon: 10.0, lat: 50.0, peak: 40, radiusKm: 1250 },
+      { name: "UK background", lon: -2.5, lat: 54.0, peak: 95, radiusKm: 420 },
+      { name: "US east background", lon: -77.0, lat: 39.0, peak: 45, radiusKm: 950 },
+      { name: "US west background", lon: -120.0, lat: 37.0, peak: 25, radiusKm: 850 },
+      { name: "Canada corridor", lon: -79.0, lat: 44.5, peak: 35, radiusKm: 600 },
+      { name: "Japan corridor", lon: 138.0, lat: 36.0, peak: 130, radiusKm: 420 },
+      { name: "Argentina pampas", lon: -60.5, lat: -34.5, peak: 30, radiusKm: 650 },
+
+      { name: "London", lon: -0.1276, lat: 51.5072, peak: 3800, radiusKm: 18 },
+      { name: "Inner East London", lon: -0.0180, lat: 51.5360, peak: 2100, radiusKm: 11 },
+      { name: "Inner West London", lon: -0.2140, lat: 51.5070, peak: 1700, radiusKm: 10 },
+      { name: "South London", lon: -0.1050, lat: 51.4450, peak: 1600, radiusKm: 12 },
+      { name: "North London", lon: -0.1200, lat: 51.5900, peak: 1350, radiusKm: 11 },
+      { name: "Manchester", lon: -2.2426, lat: 53.4808, peak: 1700, radiusKm: 15 },
+      { name: "Birmingham", lon: -1.8904, lat: 52.4862, peak: 1500, radiusKm: 14 },
+      { name: "Glasgow", lon: -4.2518, lat: 55.8642, peak: 1200, radiusKm: 12 },
+      { name: "Leeds", lon: -1.5491, lat: 53.8008, peak: 1100, radiusKm: 12 },
+      { name: "Liverpool", lon: -2.9916, lat: 53.4084, peak: 1050, radiusKm: 11 },
+      { name: "Edinburgh", lon: -3.1883, lat: 55.9533, peak: 800, radiusKm: 10 },
+
+      { name: "Paris", lon: 2.3522, lat: 48.8566, peak: 5200, radiusKm: 16 },
+      { name: "Madrid", lon: -3.7038, lat: 40.4168, peak: 3300, radiusKm: 16 },
+      { name: "Barcelona", lon: 2.1734, lat: 41.3851, peak: 3800, radiusKm: 13 },
+      { name: "Berlin", lon: 13.4050, lat: 52.5200, peak: 2500, radiusKm: 16 },
+      { name: "Ruhr", lon: 7.0123, lat: 51.4556, peak: 1900, radiusKm: 28 },
+      { name: "Milan", lon: 9.1900, lat: 45.4642, peak: 3400, radiusKm: 14 },
+      { name: "Rome", lon: 12.4964, lat: 41.9028, peak: 2400, radiusKm: 16 },
+      { name: "Naples", lon: 14.2681, lat: 40.8518, peak: 3300, radiusKm: 12 },
+      { name: "Amsterdam", lon: 4.9041, lat: 52.3676, peak: 2600, radiusKm: 12 },
+      { name: "Randstad", lon: 4.4777, lat: 52.0907, peak: 1450, radiusKm: 38 },
+      { name: "Brussels", lon: 4.3517, lat: 50.8503, peak: 2600, radiusKm: 13 },
+      { name: "Vienna", lon: 16.3738, lat: 48.2082, peak: 2300, radiusKm: 13 },
+      { name: "Prague", lon: 14.4378, lat: 50.0755, peak: 1900, radiusKm: 12 },
+      { name: "Warsaw", lon: 21.0122, lat: 52.2297, peak: 2200, radiusKm: 13 },
+      { name: "Budapest", lon: 19.0402, lat: 47.4979, peak: 2100, radiusKm: 13 },
+      { name: "Athens", lon: 23.7275, lat: 37.9838, peak: 3000, radiusKm: 15 },
+      { name: "Lisbon", lon: -9.1393, lat: 38.7223, peak: 2600, radiusKm: 12 },
+      { name: "Porto", lon: -8.6291, lat: 41.1579, peak: 1600, radiusKm: 10 },
+      { name: "Dublin", lon: -6.2603, lat: 53.3498, peak: 1600, radiusKm: 12 },
+      { name: "Copenhagen", lon: 12.5683, lat: 55.6761, peak: 1900, radiusKm: 12 },
+      { name: "Stockholm", lon: 18.0686, lat: 59.3293, peak: 1500, radiusKm: 14 },
+      { name: "Oslo", lon: 10.7522, lat: 59.9139, peak: 1100, radiusKm: 12 },
+      { name: "Helsinki", lon: 24.9384, lat: 60.1699, peak: 1200, radiusKm: 12 },
+      { name: "Zurich", lon: 8.5417, lat: 47.3769, peak: 1700, radiusKm: 10 },
+      { name: "Geneva", lon: 6.1432, lat: 46.2044, peak: 1500, radiusKm: 9 },
+      { name: "Munich", lon: 11.5820, lat: 48.1351, peak: 2000, radiusKm: 13 },
+      { name: "Hamburg", lon: 9.9937, lat: 53.5511, peak: 1700, radiusKm: 13 },
+      { name: "Frankfurt", lon: 8.6821, lat: 50.1109, peak: 1700, radiusKm: 12 },
+
+      { name: "New York", lon: -74.0060, lat: 40.7128, peak: 6100, radiusKm: 24 },
+      { name: "Los Angeles", lon: -118.2437, lat: 34.0522, peak: 3600, radiusKm: 30 },
+      { name: "Chicago", lon: -87.6298, lat: 41.8781, peak: 3400, radiusKm: 22 },
+      { name: "Boston", lon: -71.0589, lat: 42.3601, peak: 2800, radiusKm: 17 },
+      { name: "Philadelphia", lon: -75.1652, lat: 39.9526, peak: 2700, radiusKm: 17 },
+      { name: "Washington DC", lon: -77.0369, lat: 38.9072, peak: 2400, radiusKm: 18 },
+      { name: "Miami", lon: -80.1918, lat: 25.7617, peak: 3200, radiusKm: 20 },
+      { name: "Atlanta", lon: -84.3880, lat: 33.7490, peak: 1200, radiusKm: 23 },
+      { name: "Dallas", lon: -96.7970, lat: 32.7767, peak: 1500, radiusKm: 25 },
+      { name: "Houston", lon: -95.3698, lat: 29.7604, peak: 1500, radiusKm: 25 },
+      { name: "Phoenix", lon: -112.0740, lat: 33.4484, peak: 1300, radiusKm: 22 },
+      { name: "San Francisco Bay", lon: -122.4194, lat: 37.7749, peak: 3000, radiusKm: 24 },
+      { name: "Seattle", lon: -122.3321, lat: 47.6062, peak: 1800, radiusKm: 18 },
+      { name: "Denver", lon: -104.9903, lat: 39.7392, peak: 1200, radiusKm: 17 },
+      { name: "Detroit", lon: -83.0458, lat: 42.3314, peak: 1400, radiusKm: 18 },
+      { name: "Minneapolis", lon: -93.2650, lat: 44.9778, peak: 1200, radiusKm: 18 },
+      { name: "San Diego", lon: -117.1611, lat: 32.7157, peak: 1900, radiusKm: 17 },
+      { name: "Las Vegas", lon: -115.1398, lat: 36.1699, peak: 1600, radiusKm: 16 },
+
+      { name: "Toronto", lon: -79.3832, lat: 43.6532, peak: 3000, radiusKm: 18 },
+      { name: "Montreal", lon: -73.5673, lat: 45.5017, peak: 2400, radiusKm: 16 },
+      { name: "Vancouver", lon: -123.1207, lat: 49.2827, peak: 2500, radiusKm: 16 },
+      { name: "Calgary", lon: -114.0719, lat: 51.0447, peak: 1100, radiusKm: 15 },
+      { name: "Edmonton", lon: -113.4938, lat: 53.5461, peak: 1000, radiusKm: 15 },
+      { name: "Ottawa", lon: -75.6972, lat: 45.4215, peak: 1200, radiusKm: 14 },
+      { name: "Quebec City", lon: -71.2080, lat: 46.8139, peak: 850, radiusKm: 12 },
+      { name: "Winnipeg", lon: -97.1384, lat: 49.8951, peak: 900, radiusKm: 12 },
+
+      { name: "Tokyo", lon: 139.6503, lat: 35.6762, peak: 7200, radiusKm: 25 },
+      { name: "Yokohama", lon: 139.6380, lat: 35.4437, peak: 3600, radiusKm: 16 },
+      { name: "Osaka", lon: 135.5023, lat: 34.6937, peak: 5200, radiusKm: 18 },
+      { name: "Nagoya", lon: 136.9066, lat: 35.1815, peak: 3000, radiusKm: 16 },
+      { name: "Fukuoka", lon: 130.4017, lat: 33.5902, peak: 2600, radiusKm: 13 },
+      { name: "Sapporo", lon: 141.3545, lat: 43.0618, peak: 1900, radiusKm: 13 },
+      { name: "Sendai", lon: 140.8694, lat: 38.2682, peak: 1500, radiusKm: 11 },
+      { name: "Hiroshima", lon: 132.4553, lat: 34.3853, peak: 1500, radiusKm: 11 },
+      { name: "Kyoto", lon: 135.7681, lat: 35.0116, peak: 1900, radiusKm: 12 },
+      { name: "Kobe", lon: 135.1955, lat: 34.6901, peak: 1900, radiusKm: 11 },
+
+      { name: "Buenos Aires", lon: -58.3816, lat: -34.6037, peak: 4700, radiusKm: 22 },
+      { name: "La Plata", lon: -57.9545, lat: -34.9214, peak: 900, radiusKm: 10 },
+      { name: "Cordoba", lon: -64.1888, lat: -31.4201, peak: 1700, radiusKm: 13 },
+      { name: "Rosario", lon: -60.6393, lat: -32.9442, peak: 1700, radiusKm: 12 },
+      { name: "Mendoza", lon: -68.8458, lat: -32.8895, peak: 1200, radiusKm: 11 },
+      { name: "Tucuman", lon: -65.2176, lat: -26.8083, peak: 1200, radiusKm: 10 },
+      { name: "Mar del Plata", lon: -57.5426, lat: -38.0055, peak: 800, radiusKm: 9 },
+      { name: "Salta", lon: -65.4117, lat: -24.7821, peak: 700, radiusKm: 9 },
+      { name: "Santa Fe", lon: -60.7010, lat: -31.6107, peak: 700, radiusKm: 9 },
+
+      { name: "Sao Paulo", lon: -46.6333, lat: -23.5505, peak: 13200, radiusKm: 10 },
+      { name: "Rio de Janeiro", lon: -43.1729, lat: -22.9068, peak: 11200, radiusKm: 9 },
+      { name: "Belo Horizonte", lon: -43.9345, lat: -19.9167, peak: 7600, radiusKm: 7 },
+      { name: "Campinas", lon: -47.0608, lat: -22.9056, peak: 4200, radiusKm: 6 },
+      { name: "Guarulhos", lon: -46.5337, lat: -23.4543, peak: 6200, radiusKm: 6 },
+      { name: "Niteroi", lon: -43.1034, lat: -22.8832, peak: 5800, radiusKm: 4 },
+      { name: "Contagem", lon: -44.0536, lat: -19.9317, peak: 3600, radiusKm: 5 }
+    ];
+
+    let drawInteraction = null;
+
+    function distanceKm(a, b) {
+      const earthKm = 6371;
+      const dLat = (b.lat - a.lat) * Math.PI / 180;
+      const dLon = (b.lon - a.lon) * Math.PI / 180;
+      const lat1 = a.lat * Math.PI / 180;
+      const lat2 = b.lat * Math.PI / 180;
+      const h = Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+      return 2 * earthKm * Math.asin(Math.sqrt(h));
+    }
+
+    function densityAt(lon, lat) {
+      const baseline = 35;
+      return baseline + densityAnchors.reduce((sum, anchor) => {
+        const d = distanceKm({ lon, lat }, anchor);
+        const influence = Math.exp(-(d * d) / (2 * anchor.radiusKm * anchor.radiusKm));
+        return sum + anchor.peak * influence;
+      }, 0);
+    }
+
+    function pointInsideRing(point, ring) {
+      const x = point[0];
+      const y = point[1];
+      let inside = false;
+      for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        const xi = ring[i][0];
+        const yi = ring[i][1];
+        const xj = ring[j][0];
+        const yj = ring[j][1];
+        const crosses = ((yi > y) !== (yj > y)) &&
+          (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (crosses) inside = !inside;
+      }
+      return inside;
+    }
+
+    function getAreaKm2(feature) {
+      const geometry = feature.getGeometry();
+      return ol.sphere.getArea(geometry, { projection: map.getView().getProjection() }) / 1000000;
+    }
+
+    function getLonLatRing(feature, maxPoints = 120) {
+      const geometry = feature.getGeometry().clone().transform("EPSG:3857", "EPSG:4326");
+      const ring = geometry.getCoordinates()[0];
+      const step = Math.max(1, Math.ceil((ring.length - 1) / maxPoints));
+      const sampled = ring.filter((_, index) => index % step === 0);
+      const first = sampled[0];
+      const last = sampled[sampled.length - 1];
+      if (!last || first[0] !== last[0] || first[1] !== last[1]) sampled.push(first);
+      return sampled;
+    }
+
+    function calculateLocal(feature) {
+      const areaKm2 = getAreaKm2(feature);
+      const lonLatRing = getLonLatRing(feature, 240);
+      const extent = ol.extent.boundingExtent(lonLatRing);
+      const sampleCount = areaKm2 < 2 ? 18 : areaKm2 < 35 ? 28 : 42;
+      const lonStep = (extent[2] - extent[0]) / sampleCount;
+      const latStep = (extent[3] - extent[1]) / sampleCount;
+
+      let densitySum = 0;
+      let hits = 0;
+      sampleSource.clear();
+
+      for (let y = 0; y < sampleCount; y++) {
+        for (let x = 0; x < sampleCount; x++) {
+          const lon = extent[0] + lonStep * (x + 0.5);
+          const lat = extent[1] + latStep * (y + 0.5);
+          if (!pointInsideRing([lon, lat], lonLatRing)) continue;
+
+          const density = densityAt(lon, lat);
+          densitySum += density;
+          hits++;
+
+          if (hits % 8 === 0) {
+            sampleSource.addFeature(new ol.Feature({
+              geometry: new ol.geom.Point(fromLonLat([lon, lat])),
+              color: density > 5000 ? "#d84c62" : density > 1000 ? "#eca72c" : "#087b5b"
+            }));
+          }
+        }
+      }
+
+      const center = ol.extent.getCenter(extent);
+      const averageDensity = hits ? densitySum / hits : densityAt(center[0], center[1]);
+      const population = Math.round(averageDensity * areaKm2);
+      return { areaKm2, averageDensity, population, hits, source: "fallback" };
+    }
+
+    function worldPopGeoJson(feature) {
+      return {
+        type: "FeatureCollection",
+        features: [{
+          type: "Feature",
+          properties: {},
+          geometry: {
+            type: "Polygon",
+            coordinates: [getLonLatRing(feature, 120)]
+          }
+        }]
+      };
+    }
+
+    async function waitForWorldPopTask(taskId) {
+      for (let attempt = 0; attempt < 12; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 1300));
+        const response = await fetch(`https://api.worldpop.org/v1/tasks/${taskId}`);
+        if (!response.ok) throw new Error("WorldPop task request failed");
+        const payload = await response.json();
+        if (payload.error) throw new Error(payload.error_message || "WorldPop returned an error");
+        if (payload.status === "finished") return payload;
+      }
+      throw new Error("WorldPop task timed out");
+    }
+
+    async function calculateOnline(feature) {
+      const areaKm2 = getAreaKm2(feature);
+      const geojson = encodeURIComponent(JSON.stringify(worldPopGeoJson(feature)));
+      const url = `https://api.worldpop.org/v1/services/stats?dataset=wpgppop&year=2020&runasync=false&geojson=${geojson}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("WorldPop request failed");
+      let payload = await response.json();
+      if (payload.error) throw new Error(payload.error_message || "WorldPop returned an error");
+      if (payload.status !== "finished" && payload.taskid) payload = await waitForWorldPopTask(payload.taskid);
+
+      const totalPopulation = payload?.data?.total_population;
+      if (!Number.isFinite(totalPopulation)) throw new Error("WorldPop response did not include total_population");
+
+      return {
+        areaKm2,
+        averageDensity: totalPopulation / areaKm2,
+        population: Math.round(totalPopulation),
+        hits: 0,
+        source: "worldpop"
+      };
+    }
+
+    function formatNumber(value) {
+      return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 }).format(value);
+    }
+
+    function formatArea(value) {
+      const digits = value < 10 ? 2 : 1;
+      return `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: digits }).format(value)} km²`;
+    }
+
+    function clearMap() {
+      source.clear();
+      sampleSource.clear();
+      populationValue.textContent = "0";
+      areaValue.textContent = "0 km²";
+      densityValue.textContent = "0 hab/km²";
+      statusNote.textContent = 'Clique em "Desenhar area" e contorne uma regiao no mapa.';
+      mapStatus.textContent = "OpenStreetMap carregado. Arraste para navegar ou clique em Desenhar area.";
+    }
+
+    function stopDrawing() {
+      if (drawInteraction) {
+        map.removeInteraction(drawInteraction);
+        drawInteraction = null;
+      }
+      drawButton.classList.remove("active");
+      drawButton.textContent = "Desenhar area";
+    }
+
+    function startDrawing() {
+      clearMap();
+      stopDrawing();
+      drawButton.classList.add("active");
+      drawButton.textContent = "Desenhando...";
+      mapStatus.textContent = "Segure o mouse e desenhe livremente a area. Solte para calcular.";
+
+      drawInteraction = new ol.interaction.Draw({
+        source,
+        type: "Polygon",
+        freehand: true
+      });
+
+      drawInteraction.on("drawend", (event) => {
+        setTimeout(async () => {
+          source.clear();
+          source.addFeature(event.feature);
+          stopDrawing();
+          populationValue.textContent = "...";
+          areaValue.textContent = formatArea(getAreaKm2(event.feature));
+          densityValue.textContent = "...";
+          statusNote.textContent = "Consultando WorldPop 2020 para esse poligono.";
+          mapStatus.textContent = "Calculando populacao com base online. Se falhar, uso o banco local.";
+
+          let result;
+          try {
+            result = await calculateOnline(event.feature);
+            sampleSource.clear();
+          } catch (error) {
+            result = calculateLocal(event.feature);
+          }
+
+          populationValue.textContent = formatNumber(result.population);
+          areaValue.textContent = formatArea(result.areaKm2);
+          densityValue.textContent = `${formatNumber(result.averageDensity)} hab/km²`;
+          statusNote.textContent = result.source === "worldpop"
+            ? "Resultado vindo da API WorldPop, dataset wpgppop 2020."
+            : `${formatNumber(result.hits)} pontos de amostragem usados no fallback local.`;
+          mapStatus.textContent = result.source === "worldpop"
+            ? "Area calculada com WorldPop. Voce pode desenhar de novo ou limpar o mapa."
+            : "WorldPop nao respondeu para essa area; usei o banco local expandido.";
+        }, 0);
+      });
+
+      map.addInteraction(drawInteraction);
+    }
+
+    drawButton.addEventListener("click", () => {
+      if (drawInteraction) {
+        stopDrawing();
+        mapStatus.textContent = "Desenho pausado. Arraste o mapa ou clique para desenhar novamente.";
+      } else {
+        startDrawing();
+      }
+    });
+
+    clearButton.addEventListener("click", () => {
+      stopDrawing();
+      clearMap();
+    });
+
+    document.querySelectorAll("[data-city]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const [lon, lat, zoom] = button.dataset.city.split(",").map(Number);
+        stopDrawing();
+        map.getView().animate({
+          center: fromLonLat([lon, lat]),
+          zoom,
+          duration: 450
+        });
+        mapStatus.textContent = `Mapa centralizado em ${button.textContent}. Clique em Desenhar area para calcular.`;
+      });
+    });
+
+    window.addEventListener("resize", () => map.updateSize());
+    requestAnimationFrame(() => map.updateSize());
+  </script>
+</body>
+</html>
